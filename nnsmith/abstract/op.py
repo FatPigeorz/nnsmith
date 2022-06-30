@@ -541,15 +541,16 @@ class AbsOpBase(ABC):
     def __repr__(self) -> str:
         return self.__class__.__name__
 
-    @classmethod
-    def numeric_valid(cls, outputs) -> bool:
+    def numeric_valid(self, outputs, inputs) -> bool:
         with torch.no_grad():
-            return not any([torch.isnan(out).any() or torch.isinf(
+            cond1 = not any([torch.isnan(out).any() or torch.isinf(
                 out).any() for out in outputs])
-
-    @classmethod
-    def numeric_unstable(cls, outputs) -> bool:
-        return not cls.numeric_valid(outputs)
+            cond2 = True
+            if hasattr(self, 'torch_loss'):
+                loss = self.torch_loss(*inputs)
+                loss = loss[1] if isinstance(loss, tuple) else loss
+                cond2 = torch.all(loss <= 0)
+            return cond1 and cond2
 
 
 def concretize(op: AbsOpBase, model: Optional[z3.ModelRef]) -> AbsOpBase:
@@ -952,12 +953,6 @@ class Pow(BcastBinaryOp):
             b * torch.log(torch.maximum(a, torch.tensor(1e-40, dtype=a.dtype))), 40)
         return ('l1', l1)
 
-    @classmethod
-    def numeric_unstable(cls, outputs) -> bool:
-        with torch.no_grad():
-            return any([torch.isnan(out).any() or torch.isinf(
-                out).any() or torch.any(out > math.exp(40)) for out in outputs])
-
 
 @leaf
 class GELU(ElementWiseUnaryOp):
@@ -1025,6 +1020,9 @@ class Sin(TrigonometricOp):
     def torch(self):
         return torch.sin
 
+    def torch_loss(self, x):
+        return loss_le(x.abs(), 4 * math.pi)
+
 
 @leaf
 class Cos(TrigonometricOp):
@@ -1036,6 +1034,9 @@ class Cos(TrigonometricOp):
 
     def torch(self):
         return torch.cos
+
+    def torch_loss(self, x):
+        return loss_le(x.abs(), 4 * math.pi)
 
 
 @leaf
@@ -1132,6 +1133,9 @@ class Ceil(ElementWiseUnaryOp):
     def proxy_grad(self):
         return PGCeil()
 
+    def torch_loss(self, x):
+        return rounding_loss(x)
+
 
 @leaf
 class Floor(ElementWiseUnaryOp):
@@ -1146,6 +1150,9 @@ class Floor(ElementWiseUnaryOp):
 
     def proxy_grad(self):
         return PGFloor()
+
+    def torch_loss(self, x):
+        return rounding_loss(x)
 
 
 @leaf
@@ -1177,6 +1184,9 @@ class Round(ElementWiseUnaryOp):
 
     def proxy_grad(self):
         return PGRound()
+
+    def torch_loss(self, x):
+        return rounding_loss(x * 2)
 
 
 @leaf
@@ -2313,6 +2323,12 @@ class Cast(ElementWiseUnaryOp, ABC):
 
     def torch(self):
         return lambda x: x.to(dtype=self.extra_attrs['to'].value)
+
+    def torch_loss(self, x):
+        # float->int is same as floor
+        if self.extra_attrs['to'] in DTYPE_INTS and torch.is_floating_point(x):
+            return rounding_loss(x)
+        return torch.zeros(1)
 
 
 @leaf

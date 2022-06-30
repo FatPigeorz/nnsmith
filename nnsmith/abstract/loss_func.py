@@ -35,3 +35,7 @@ def loss_gt(x, y):
 
 def loss_lt(x, y):
     return loss_lt_zero(x - y)
+
+
+def rounding_loss(x):
+    return torch.where(x != torch.round(x), loss_ge(torch.abs(x - torch.round(x)), 1e-3), 0.)

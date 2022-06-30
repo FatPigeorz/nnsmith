@@ -471,7 +471,8 @@ class SymbolNet(nn.Module):
                     vul_op_loss = loss
                 else:
                     vul_op_loss = None
-                self.invalid_found_last |= not op.numeric_valid(outputs)
+                self.invalid_found_last |= not op.numeric_valid(
+                    outputs, input_tensors)
 
                 if self.invalid_found_last and (self.use_gradient and not self.stop_updating_loss):
                     if self.print_grad >= 1:
