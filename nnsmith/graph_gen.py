@@ -183,6 +183,7 @@ class SymbolNet(nn.Module):
             self.enable_training()
         self.check_intermediate_numeric = False
         self.invalid_found_last = None
+        self.unstable_as_invalid = False
 
     def concretize_svars(self, node_id, shape_vars, model, op):
         # concretize shapevars
@@ -290,6 +291,7 @@ class SymbolNet(nn.Module):
     def training_reset(self):
         self.loss = None
         self.stop_updating_loss = False
+        self.unstable_as_invalid = False
 
     def stop_training(self):
         self.use_gradient = False
@@ -363,9 +365,15 @@ class SymbolNet(nn.Module):
                 _ = self(*inputs)
                 if self.invalid_found_last:  # need_to_train
                     self.backward()
-                else:
-                    sat_inputs = [v.data for v in inputs]
-                    break
+                    continue
+                self.training_reset()
+                self.unstable_as_invalid = True
+                _ = self(*inputs)
+                if self.invalid_found_last:  # need_to_train
+                    self.backward()
+                    continue
+                sat_inputs = [v.data for v in inputs]
+                break
             except ConstraintError as e:
                 if __INPUT_FOUND_INF_MSG__ in str(e) or __INPUT_FOUND_NAN_MSG__ in str(e):
                     # flush NaN/Inf in inputs
@@ -473,6 +481,9 @@ class SymbolNet(nn.Module):
                     vul_op_loss = None
                 self.invalid_found_last |= not op.numeric_valid(
                     outputs, input_tensors)
+                if self.unstable_as_invalid:
+                    self.invalid_found_last |= not op.numeric_stable(
+                        outputs, input_tensors)
 
                 if self.invalid_found_last and (self.use_gradient and not self.stop_updating_loss):
                     if self.print_grad >= 1:

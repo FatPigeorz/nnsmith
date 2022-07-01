@@ -65,6 +65,7 @@ class SamplingSearch(InputSearchBase):
     def search_one(self, start_inp, timeout_ms: int = None) -> List[torch.Tensor]:
         with torch.no_grad():
             self.net.check_intermediate_numeric = True
+            self.net.unstable_as_invalid = True
             _ = self.net(*start_inp)
             if not self.net.invalid_found_last:
                 return start_inp

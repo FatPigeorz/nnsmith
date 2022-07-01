@@ -543,14 +543,17 @@ class AbsOpBase(ABC):
 
     def numeric_valid(self, outputs, inputs) -> bool:
         with torch.no_grad():
-            cond1 = not any([torch.isnan(out).any() or torch.isinf(
+            return not any([torch.isnan(out).any() or torch.isinf(
                 out).any() for out in outputs])
-            cond2 = True
-            if hasattr(self, 'torch_loss'):
+
+    def numeric_stable(self, outputs, inputs) -> bool:
+        with torch.no_grad():
+            cond = True
+            if hasattr(self, 'torch_loss') and isinstance(self, (Ceil, Floor, Round, Cast, Sin, Cos)):
                 loss = self.torch_loss(*inputs)
                 loss = loss[1] if isinstance(loss, tuple) else loss
-                cond2 = torch.all(loss <= 0)
-            return cond1 and cond2
+                cond = torch.all(loss <= 0)
+            return cond
 
 
 def concretize(op: AbsOpBase, model: Optional[z3.ModelRef]) -> AbsOpBase:
