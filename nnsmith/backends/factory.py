@@ -316,7 +316,15 @@ class BackendFactory(ABC):
         if target == "gpu":
             target = "cuda"  # `gpu` means `cuda` by default.
 
-        if name == "onnxruntime":
+        if name == "trivial":
+            from nnsmith.backends.trivial import TrivialFactory
+
+            return TrivialFactory(
+                target=target,
+                optmax=optmax,
+                **kwargs,
+            )
+        elif name == "onnxruntime":
             from nnsmith.backends.onnxruntime import ORTFactory
 
             return ORTFactory(
